@@ -1,0 +1,214 @@
+---
+title: "Final Assessment. Dataset Analysis"
+author: 'Pau Blasco Roca. NIU: 1600959'
+date: "28/5/2022"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## A statistical approach to the study of mammal sleep patterns in relation to body and brain weight
+
+The intent of this paper is to study the relationship between the
+physical qualities of different species of mammals and their respective 
+sleep patterns. These studies consist on an initial linear regression 
+model, followed by a bootstrap approach. After
+that, further correlation and bootstrap studies are performed by
+separating mammals in several categories.
+
+```{r include=FALSE}
+library(here)
+library(readr)
+library(ggplot2)
+library(tidyverse)
+library(plyr)
+library(corrplot)
+library(cowplot)
+library(boot)
+```
+
+```{r}
+#Initial Linear Regression fittings for some of our data variables.
+myData = msleep
+myData
+par(mfrow=c(1,2))
+P1<-ggplot(myData, aes(x=sleep_total, y=sleep_rem)) +
+  geom_point() +
+  labs(x='Total Sleep Time (h)', y='Total Rem Time (h)') +
+  stat_smooth(method='lm', color = "turquoise4")+
+  theme(plot.title = element_text(hjust=0.5, size=15, face='bold'), aspect.ratio = 1) 
+P2<-ggplot(myData, aes(x=brainwt, y=sleep_cycle)) +
+  geom_point() +
+  labs(x='Brain Weight (kg)', y='Sleep Cycle Length (h)') +
+  ylim(0,2)+
+  xlim(0,1.4)+
+  stat_smooth(method='lm', color = "turquoise4")+
+  theme(plot.title = element_text(hjust=0.5, size=15, face='bold'), aspect.ratio = 1)
+P<-plot_grid(P1, P2)
+P
+linearMod1 <- lm(sleep_total ~ sleep_rem, data=myData)  # build linear regression model on full data
+summary(linearMod1)
+linearMod2 <- lm(brainwt ~ sleep_cycle, data=myData)  # build linear regression model on full data
+summary(linearMod2)
+```
+
+```{r}
+#Studying only numeric variables, without distinguishing by mammal category
+myData = msleep %>% select(sleep_total,sleep_rem,sleep_cycle,bodywt,brainwt)
+res <- cor(myData, use = "complete.obs")
+round(res, 2)
+#we calculate the correlation matrix between all the variables in the dataset
+corrplot(res, method="number", type = "lower", order = "original", 
+         tl.col = "black", tl.srt = 45)
+```
+
+
+```{r}
+#Parametric bootstrap to prove H0="body weight influences total sleep time" (the slope is not 0)
+set.seed(1111)
+myData = msleep %>% select(bodywt,sleep_total)
+N=10000
+siz=35
+x <- 1:N;
+for (i in 1:N){
+  boot  = na.omit(myData[sample(na.omit(siz),(siz),replace = TRUE),])
+  bootX = as.matrix(boot[,c(2)])
+  bootY = as.matrix(boot[,c(1)])
+  coefs = lm(bootX ~ bootY)$coefficients
+  x[i]= coefs["bootY"]
+}
+
+#We find the standard errors without having to derive an equation manually
+x = sort(x)
+SE_slope = sd(x)
+mean_slope = mean(x)
+#outputting the estimate and the Standard Error
+SE_slope
+mean_slope
+#Our CI is determined by the 500th and 9500th value of the ordered set of results
+p<- ggplot() + aes(x)+ geom_histogram(binwidth=0.0012, colour="black", fill="#30d5c8")  + xlim(-0.025,0.01) +
+  ggtitle("Bootstrap with 0.90 CI") + xlab("BDW and TST Correlation Coefficient") + ylab("Frequency") + 
+  theme(plot.title = element_text(color="black", size=20, face="bold"), axis.title.x = element_text(color="black", size=14, face="bold"), axis.title.y = element_text(color="black", size=14, face="bold")) +
+  geom_vline(xintercept = x[500], color = "blue", size=1.5) + 
+  geom_vline(xintercept = x[9500], color = "blue", size=1.5)
+p
+```
+
+```{r}
+#Non parametric bootstrap to prove H0="body weight influences total sleep time" (the slope is not 0)
+set.seed(2222)
+myData = msleep %>% select(bodywt,sleep_total)
+correlator = function(base,i){return(cor(base[i,]$bodywt, base[i,]$sleep_total))}
+crtl_boot = boot(myData,correlator,R=10000)
+#Our CI is determined following normal distribution quantiles.
+boot.ci(boot.out = crtl_boot, type = c("norm"), conf = 0.90)
+```
+
+```{r}
+#Parametric Bootstrap to prove H0="brain weight influences sleep cycle length" (the slope is not 0)
+set.seed(5555)
+myData = msleep %>% select(sleep_cycle,brainwt)
+N=10000
+siz=35
+x <- 1:N;
+for (i in 1:N){
+  boot  = na.omit(myData[sample(na.omit(siz),(siz),replace = TRUE),])
+  bootX = as.matrix(boot[,c(2)])
+  bootY = as.matrix(boot[,c(1)])
+  coefs = lm(bootX ~ bootY)$coefficients
+  x[i]= coefs["bootY"]
+}
+
+#We find the standard errors without having to derive an equation manually
+x = sort(x)
+SE_slope = sd(x)
+mean_slope = mean(x)
+#outputting the estimate and the Standard Error
+SE_slope
+mean_slope
+#Our CI is determined by the 500th and 9500th value of the ordered set of results
+p<- ggplot() + aes(x)+ geom_histogram(binwidth=0.05, colour="black", fill="#30d5c8") + 
+  geom_vline(xintercept = x[500], color = "blue", size=1.5) + 
+  geom_vline(xintercept = x[9500], color = "blue", size=1.5) + 
+  ggtitle("Bootstrap with 0.90 CI") + xlab("BRW and SCL Correlation Coefficient") + ylab("Frequency") + 
+  theme(plot.title = element_text(color="black", size=20, face="bold"), axis.title.x = element_text(color="black", size=14, face="bold"), axis.title.y = element_text(color="black", size=14, face="bold"))
+p
+```
+
+```{r}
+#Non parametric bootstrap to prove H0="brain weight influences sleep cycle length" (the slope is not 0)
+set.seed(2222)
+myDataInc = msleep %>% select(sleep_cycle,brainwt)
+myData = myDataInc[complete.cases(myDataInc), ]
+correlator = function(base,i){return(cor(base[i,]$sleep_cycle, base[i,]$brainwt))}
+crtl_boot = boot(myData,correlator,R=10000)
+#Our CI is determined following normal distribution quantiles.
+boot.ci(boot.out = crtl_boot, type = c("norm"), conf=0.90)
+```
+
+
+
+```{r}
+#brief correlation study dividing the dataset by the mamals' diet.
+#NOTE: this does NOT appear in the paper, but it was useful to the investigation.
+myDataCarni = msleep %>% filter(vore=="carni") %>% select(sleep_total,sleep_rem,sleep_cycle,bodywt,brainwt)
+myDataHerbi = msleep %>% filter(vore=="herbi") %>% select(sleep_total,sleep_rem,sleep_cycle,bodywt,brainwt) 
+myDataOmniv = msleep %>% filter(vore=="omni")  %>% select(sleep_total,sleep_rem,sleep_cycle,bodywt,brainwt)
+
+par(mfrow=c(1,3))
+res <- cor(myDataCarni, use = "complete.obs")
+round(res, 2)
+corrplot(res, method="number", type = "lower", order = "original", 
+         tl.col = "black", tl.srt = 45)
+res <- cor(myDataHerbi, use = "complete.obs")
+round(res, 2)
+corrplot(res, method="number", type = "lower", order = "original", 
+         tl.col = "black", tl.srt = 45)
+res <- cor(myDataOmniv, use = "complete.obs")
+round(res, 2)
+corrplot(res, method="number", type = "lower", order = "original", 
+         tl.col = "black", tl.srt = 45)
+```
+
+```{r}
+#Pie plot of the distribution of the dataset based on the mammals' diet
+data <- data.frame(
+  Category=c("Carnivores", "Omnivores", "Herbivores", "Insectivores", "Unclassified"),
+  count=c(19, 20, 32, 5, 7)
+)
+ggplot(data, aes(x="", y=count, fill=reorder(Category,count))) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  #good looking color palette
+  scale_fill_manual(values=c("#90E6FC", "#7CD7F7", "#8BCBFC", "#83BDF7", "#84ACFA")) + 
+  theme_void() # remove background, grid, numeric labels
+```
+
+```{r}
+#Data filtering based on their diet
+myDataCH = msleep %>% filter(vore=="carni" | vore=="herbi")
+par(mfrow=c(1,2))
+#Two plots with their respective regression lines
+P1<-ggplot(myDataCH, aes(x=sleep_total, y=sleep_cycle, col=vore)) +
+  geom_point() +
+  xlim(4,14)+
+  labs(x='Total Sleep Time (h)', y='Sleep Cycle Length (h)', col='Diet') +
+  stat_smooth(method='lm')+
+  theme(plot.title = element_text(hjust=0.5, size=15, face='bold'), aspect.ratio = 1.2) 
+P2<-ggplot(myDataCH, aes(x=brainwt, y=sleep_cycle, col=vore)) +
+  geom_point() +
+  xlim(0,0.7)+
+  labs(x='Brain Weight (kg)', y='Sleep Cycle Length (h)', col='Diet') +
+  stat_smooth(method='lm')+
+  theme(plot.title = element_text(hjust=0.5, size=15, face='bold'), aspect.ratio = 1.2)
+P<-plot_grid(P1, P2)
+P
+```
+
+
+
